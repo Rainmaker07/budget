@@ -24,7 +24,7 @@ struct QuickAddView: View {
     @FocusState private var focusedField: Field?
     @AppStorage("quickAdd.lastPayer") private var lastPayerURI = ""
 
-    private enum Field { case charged, payee, note }
+    private enum Field { case charged, payee }
 
     private var household: Household { model.household }
     private var baseCurrency: CurrencyCode { household.currency }
@@ -49,7 +49,7 @@ struct QuickAddView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
                     Picker("Type", selection: $kind) {
                         ForEach(EntryKind.allCases) { kind in
                             Text(kind.title).tag(kind)
@@ -106,7 +106,7 @@ struct QuickAddView: View {
                     .font(.tideNumber(30, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text(input.displayText())
-                    .font(.tideNumber(60, weight: .bold))
+                    .font(.tideNumber(54, weight: .bold))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                     .animation(.snappy(duration: 0.2), value: input)
@@ -138,7 +138,6 @@ struct QuickAddView: View {
             }
             .buttonStyle(.glass)
         }
-        .padding(.vertical, 8)
     }
 
     private var foreignCharge: some View {
@@ -176,75 +175,58 @@ struct QuickAddView: View {
         return "1 \(currency.rawValue) = \(shown.formatted()) \(baseCurrency.rawValue)"
     }
 
+    /// Date, who paid and account as compact glass chips, plus where.
     private var details: some View {
-        GlassCard(padding: 4) {
-            VStack(spacing: 0) {
-                detailRow("Date", icon: "calendar") {
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
-                        .labelsHidden()
-                }
-                Divider().padding(.leading, 48)
-                detailRow("Paid by", icon: "person.2.fill") {
-                    HStack(spacing: 6) {
-                        ForEach(household.memberList, id: \.objectID) { member in
-                            Button {
-                                payer = member
-                                lastPayerURI = member.objectID.uriRepresentation().absoluteString
-                            } label: {
-                                HStack(spacing: 6) {
-                                    MemberAvatar(member: member, size: 20)
-                                    Text(member.displayName).font(.subheadline.weight(.medium))
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(payer == member ? member.color.opacity(0.25) : .clear, in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                Divider().padding(.leading, 48)
-                detailRow("Account", icon: "building.columns.fill") {
-                    Menu {
-                        ForEach(spendingAccounts, id: \.objectID) { account in
-                            Button(account.displayName) { self.account = account }
-                        }
-                    } label: {
-                        Text(account?.displayName ?? "Choose")
-                            .font(.subheadline.weight(.medium))
-                    }
-                }
-                Divider().padding(.leading, 48)
-                detailRow(kind == .income ? "From" : "Where", icon: "mappin.and.ellipse") {
-                    TextField(kind == .income ? "Employer, client…" : "Shop, place…", text: $payee)
-                        .multilineTextAlignment(.trailing)
-                        .focused($focusedField, equals: .payee)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .note }
-                }
-                Divider().padding(.leading, 48)
-                detailRow("Note", icon: "text.alignleft") {
-                    TextField("Optional", text: $note)
-                        .multilineTextAlignment(.trailing)
-                        .focused($focusedField, equals: .note)
-                        .submitLabel(.done)
-                }
-            }
-        }
-    }
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                DatePicker("Date", selection: $date, displayedComponents: .date)
+                    .labelsHidden()
 
-    private func detailRow<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-            Text(title)
-                .font(.subheadline)
-            Spacer(minLength: 12)
-            content()
+                Menu {
+                    ForEach(household.memberList, id: \.objectID) { member in
+                        Button(member.displayName) {
+                            payer = member
+                            lastPayerURI = member.objectID.uriRepresentation().absoluteString
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        MemberAvatar(member: payer, size: 20)
+                        Text(payer?.displayName ?? "Who paid")
+                    }
+                    .detailChip()
+                }
+                .accessibilityLabel("Paid by \(payer?.displayName ?? "nobody")")
+
+                Menu {
+                    ForEach(spendingAccounts, id: \.objectID) { account in
+                        Button(account.displayName, systemImage: account.symbol) { self.account = account }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: account?.symbol ?? "building.columns")
+                            .foregroundStyle(account?.color ?? .secondary)
+                        Text(account?.displayName ?? "Account")
+                            .lineLimit(1)
+                    }
+                    .detailChip()
+                }
+                .accessibilityLabel("Account \(account?.displayName ?? "none")")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 10) {
+                Image(systemName: kind == .income ? "person.crop.circle" : "mappin.and.ellipse")
+                    .foregroundStyle(.secondary)
+                TextField(kind == .income ? "From (employer, client…)" : "Where? (shop, place…)", text: $payee)
+                    .focused($focusedField, equals: .payee)
+                    .submitLabel(.done)
+                    .onSubmit { focusedField = nil }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 48)
     }
 
     @ViewBuilder
@@ -358,26 +340,13 @@ private struct CategoryChips: View {
     var body: some View {
         ScrollView(.horizontal) {
             GlassEffectContainer(spacing: 8) {
-                LazyHGrid(rows: [GridItem(.fixed(40), spacing: 8), GridItem(.fixed(40), spacing: 8)], spacing: 8) {
-                    ForEach(categories, id: \.objectID) { category in
-                        let isSelected = selection == category
-                        Button {
-                            withAnimation(.snappy) { selection = category }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: category.symbol)
-                                    .foregroundStyle(isSelected ? .white : category.color)
-                                Text(category.displayName)
-                                    .foregroundStyle(isSelected ? .white : .primary)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(0..<2, id: \.self) { row in
+                        HStack(spacing: 8) {
+                            ForEach(rowItems(row), id: \.objectID) { category in
+                                chip(category)
                             }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .frame(height: 40)
-                            .glassEffect(isSelected ? .regular.tint(category.color).interactive() : .regular.interactive(),
-                                         in: .capsule)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
             }
@@ -386,6 +355,43 @@ private struct CategoryChips: View {
         }
         .scrollIndicators(.hidden)
         .padding(.horizontal, -16)
+    }
+
+    /// Splits categories across two rows, keeping the order reading left to right.
+    private func rowItems(_ row: Int) -> [BudgetCategory] {
+        let half = (categories.count + 1) / 2
+        return row == 0 ? Array(categories.prefix(half)) : Array(categories.dropFirst(half))
+    }
+
+    private func chip(_ category: BudgetCategory) -> some View {
+        let isSelected = selection == category
+        return Button {
+            withAnimation(.snappy) { selection = category }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: category.symbol)
+                    .foregroundStyle(isSelected ? .white : category.color)
+                Text(category.displayName)
+                    .foregroundStyle(isSelected ? .white : .primary)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .glassEffect(isSelected ? .regular.tint(category.color).interactive() : .regular.interactive(),
+                         in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private extension View {
+    func detailChip() -> some View {
+        font(.subheadline.weight(.medium))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 

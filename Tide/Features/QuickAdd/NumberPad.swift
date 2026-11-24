@@ -27,7 +27,7 @@ struct NumberPad: View {
                                 label(for: key)
                                     .font(.tideNumber(26, weight: .medium))
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 52)
+                                    .frame(height: 48)
                                     .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
