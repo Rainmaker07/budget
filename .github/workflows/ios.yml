@@ -1,0 +1,139 @@
+name: iOS build
+
+on:
+  push:
+    branches-ignore: [ci-screenshots]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # only used to publish screenshots to the ci-screenshots branch
+
+jobs:
+  build:
+    name: Test, build & screenshot
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      BUNDLE_ID: app.tide.Tide
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 27
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XCODE=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "::error::No Xcode 27 found on this runner image"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: TideKit unit tests
+        run: swift test --package-path Packages/TideKit
+
+      - name: Pick an iOS 27 iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          devices = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, items in devices.items():
+              m = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not m or int(m.group(1)) < 27:
+                  continue
+              version = (int(m.group(1)), int(m.group(2)))
+              for d in items:
+                  name = d["name"]
+                  if not name.startswith("iPhone"):
+                      continue
+                  score = (version, "Pro" in name and "Max" not in name, name)
+                  if best is None or score > best[0]:
+                      best = (score, d["udid"], name)
+          if best is None:
+              sys.exit("No iOS 27 iPhone simulator available")
+          print(best[1])
+          print(f"Using {best[2]} {best[0][0]}", file=sys.stderr)
+          ')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Tide.xcodeproj \
+            -scheme Tide \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Take screenshots
+        run: |
+          UDID=${{ steps.sim.outputs.udid }}
+          APP=build/Build/Products/Debug-iphonesimulator/Tide.app
+          mkdir -p screenshots
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          xcrun simctl install "$UDID" "$APP"
+
+          shoot() {
+            local name=$1; shift
+            xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+            xcrun simctl launch "$UDID" "$BUNDLE_ID" -demo YES "$@"
+            sleep 7
+            xcrun simctl io "$UDID" screenshot "screenshots/$name.png"
+          }
+
+          for look in dark light; do
+            xcrun simctl ui "$UDID" appearance "$look"
+            shoot "$look-1-home" -tab home
+            shoot "$look-2-quickadd" -tab home -quickadd YES
+            shoot "$look-3-activity" -tab activity
+            shoot "$look-4-home-every-euro" -tab home -mode everyDollar
+            shoot "$look-5-wealth-placeholder" -tab wealth
+          done
+          ls -la screenshots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots
+
+      - name: Publish screenshots to the ci-screenshots branch
+        if: github.event_name == 'push'
+        run: |
+          BRANCH_DIR="${GITHUB_REF_NAME//\//-}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin ci-screenshots:ci-screenshots 2>/dev/null || true
+          if git show-ref --quiet refs/heads/ci-screenshots; then
+            git worktree add shots ci-screenshots
+          else
+            git worktree add --detach shots
+            (cd shots && git checkout --orphan ci-screenshots && git rm -rf --quiet . )
+          fi
+          rm -rf "shots/$BRANCH_DIR"
+          mkdir -p "shots/$BRANCH_DIR"
+          cp screenshots/*.png "shots/$BRANCH_DIR/"
+          cd shots
+          git add -A
+          git commit -m "Screenshots for $GITHUB_REF_NAME @ ${GITHUB_SHA::7}" || exit 0
+          git push origin ci-screenshots
