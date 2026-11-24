@@ -23,30 +23,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode 27
+      - name: Select newest Xcode
         run: |
-          ls -d /Applications/Xcode*.app || true
-          XCODE=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE" ]; then
-            echo "::error::No Xcode 27 found on this runner image"
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE"
+          BEST=""; BEST_VERSION="0"
+          for app in /Applications/Xcode*.app; do
+            v=$(defaults read "$app/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo 0)
+            echo "$app -> $v"
+            if [ "$(printf '%s\n%s\n' "$BEST_VERSION" "$v" | sort -V | tail -1)" = "$v" ]; then
+              BEST="$app"; BEST_VERSION="$v"
+            fi
+          done
+          sudo xcode-select -s "$BEST"
           xcodebuild -version
+          MAJOR=${BEST_VERSION%%.*}
+          echo "XCODE_MAJOR=$MAJOR" >> "$GITHUB_ENV"
+          if [ "$MAJOR" -lt 27 ]; then
+            echo "::warning::Runner has no Xcode 27 (newest is $BEST_VERSION). Building against iOS $MAJOR as a compile check; the project itself targets iOS 27."
+            echo "DEPLOYMENT_OVERRIDE=IPHONEOS_DEPLOYMENT_TARGET=$MAJOR.0" >> "$GITHUB_ENV"
+          fi
+          xcrun simctl list runtimes
 
       - name: TideKit unit tests
         run: swift test --package-path Packages/TideKit
 
-      - name: Pick an iOS 27 iPhone simulator
+      - name: Pick an iPhone simulator
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, re, sys
+          import json, os, re, sys
           devices = json.load(sys.stdin)["devices"]
           best = None
           for runtime, items in devices.items():
               m = re.search(r"iOS-(\d+)-(\d+)", runtime)
-              if not m or int(m.group(1)) < 27:
+              if not m or int(m.group(1)) < int(os.environ["XCODE_MAJOR"]):
                   continue
               version = (int(m.group(1)), int(m.group(2)))
               for d in items:
@@ -57,7 +66,7 @@ jobs:
                   if best is None or score > best[0]:
                       best = (score, d["udid"], name)
           if best is None:
-              sys.exit("No iOS 27 iPhone simulator available")
+              sys.exit("No matching iPhone simulator available")
           print(best[1])
           print(f"Using {best[2]} {best[0][0]}", file=sys.stderr)
           ')
@@ -73,6 +82,7 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
+            $DEPLOYMENT_OVERRIDE \
             | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
 
