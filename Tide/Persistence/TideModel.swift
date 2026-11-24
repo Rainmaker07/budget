@@ -94,25 +94,25 @@ enum TideModel {
         ])
 
         // Household owns everything (cascade), so deleting or sharing it covers the whole budget.
-        relate(household, "members", .toMany, .cascade, member, "household", .toOne, .nullify)
-        relate(household, "categories", .toMany, .cascade, category, "household", .toOne, .nullify)
-        relate(household, "accounts", .toMany, .cascade, account, "household", .toOne, .nullify)
-        relate(household, "entries", .toMany, .cascade, entry, "household", .toOne, .nullify)
-        relate(household, "budgets", .toMany, .cascade, budget, "household", .toOne, .nullify)
-        relate(household, "goals", .toMany, .cascade, goal, "household", .toOne, .nullify)
+        relate(household, "members", .toMany, .cascadeDeleteRule, member, "household", .toOne, .nullifyDeleteRule)
+        relate(household, "categories", .toMany, .cascadeDeleteRule, category, "household", .toOne, .nullifyDeleteRule)
+        relate(household, "accounts", .toMany, .cascadeDeleteRule, account, "household", .toOne, .nullifyDeleteRule)
+        relate(household, "entries", .toMany, .cascadeDeleteRule, entry, "household", .toOne, .nullifyDeleteRule)
+        relate(household, "budgets", .toMany, .cascadeDeleteRule, budget, "household", .toOne, .nullifyDeleteRule)
+        relate(household, "goals", .toMany, .cascadeDeleteRule, goal, "household", .toOne, .nullifyDeleteRule)
 
-        relate(category, "children", .toMany, .cascade, category, "parent", .toOne, .nullify)
-        relate(category, "entries", .toMany, .nullify, entry, "category", .toOne, .nullify)
-        relate(category, "budgets", .toMany, .cascade, budget, "category", .toOne, .nullify)
-        relate(category, "goals", .toMany, .nullify, goal, "category", .toOne, .nullify)
-        relate(category, "accounts", .toMany, .nullify, account, "category", .toOne, .nullify)
+        relate(category, "children", .toMany, .cascadeDeleteRule, category, "parent", .toOne, .nullifyDeleteRule)
+        relate(category, "entries", .toMany, .nullifyDeleteRule, entry, "category", .toOne, .nullifyDeleteRule)
+        relate(category, "budgets", .toMany, .cascadeDeleteRule, budget, "category", .toOne, .nullifyDeleteRule)
+        relate(category, "goals", .toMany, .nullifyDeleteRule, goal, "category", .toOne, .nullifyDeleteRule)
+        relate(category, "accounts", .toMany, .nullifyDeleteRule, account, "category", .toOne, .nullifyDeleteRule)
 
-        relate(account, "entries", .toMany, .nullify, entry, "account", .toOne, .nullify)
-        relate(account, "incomingTransfers", .toMany, .nullify, entry, "toAccount", .toOne, .nullify)
-        relate(account, "snapshots", .toMany, .cascade, snapshot, "account", .toOne, .nullify)
-        relate(account, "goals", .toMany, .nullify, goal, "account", .toOne, .nullify)
+        relate(account, "entries", .toMany, .nullifyDeleteRule, entry, "account", .toOne, .nullifyDeleteRule)
+        relate(account, "incomingTransfers", .toMany, .nullifyDeleteRule, entry, "toAccount", .toOne, .nullifyDeleteRule)
+        relate(account, "snapshots", .toMany, .cascadeDeleteRule, snapshot, "account", .toOne, .nullifyDeleteRule)
+        relate(account, "goals", .toMany, .nullifyDeleteRule, goal, "account", .toOne, .nullifyDeleteRule)
 
-        relate(member, "paidEntries", .toMany, .nullify, entry, "payer", .toOne, .nullify)
+        relate(member, "paidEntries", .toMany, .nullifyDeleteRule, entry, "payer", .toOne, .nullifyDeleteRule)
 
         let model = NSManagedObjectModel()
         model.entities = [household, member, category, account, entry, budget, snapshot, goal]
