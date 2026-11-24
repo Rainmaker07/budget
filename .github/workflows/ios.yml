@@ -79,7 +79,7 @@ jobs:
             -project Tide.xcodeproj \
             -scheme Tide \
             -configuration Debug \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             $DEPLOYMENT_OVERRIDE \
