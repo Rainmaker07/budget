@@ -12,8 +12,9 @@
   - the version line in `README.md`
   - `docs/PLAN.md` roadmap status
   - a line in `.github/release-tags.txt` (`v<version> <commit>`) once the
-    release commit is green; CI creates the git tag (this environment can't
-    push tags directly)
+    release commit is green. Neither this environment nor the workflow token
+    can push tags (GitHub blocks tags on commits with workflow files), so the
+    owner creates them on GitHub → Releases; the CI step only tries and warns.
 - The app shows its version via `AppInfo` (Settings → About, Home footer).
 
 ## Project facts

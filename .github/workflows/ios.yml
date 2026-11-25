@@ -163,6 +163,9 @@ jobs:
 
       - name: Create release tags
         if: github.event_name == 'push'
+        # GitHub doesn't let the workflow token tag commits that contain workflow
+        # files, so this may only warn. Tags can be created on the Releases page.
+        continue-on-error: true
         run: |
           # Tags listed in .github/release-tags.txt ("v0.1.0 <commit>") are created once.
           git config user.name "github-actions[bot]"
@@ -173,7 +176,11 @@ jobs:
               echo "$tag already exists"
             elif git cat-file -e "$commit^{commit}" 2>/dev/null; then
               git tag -a "$tag" "$commit" -m "Tide ${tag#v}"
-              git push origin "$tag" && echo "Created $tag at $commit"
+              if git push origin "$tag"; then
+                echo "Created $tag at $commit"
+              else
+                echo "::warning::Could not push $tag. Create it on GitHub: Releases → Draft a new release → tag $tag, target $commit."
+              fi
             else
               echo "::warning::$tag points at unknown commit $commit"
             fi

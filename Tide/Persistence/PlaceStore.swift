@@ -28,25 +28,37 @@ enum PlaceStore {
     }
 
     /// Links entries that only have a typed place name (from 0.1.0) to Place
-    /// records. Safe to run on every launch.
+    /// records. Spellings that differ only in case or accents become one place,
+    /// named after the most common spelling (normal capitalization beats
+    /// ALL CAPS on a tie). Safe to run on every launch.
     static func backfill(_ household: Household, context: NSManagedObjectContext) {
         let request = NSFetchRequest<LedgerEntry>(entityName: "LedgerEntry")
         request.predicate = NSPredicate(format: "household == %@ AND place == nil AND payee != nil AND payee != ''", household)
         guard let entries = try? context.fetch(request), !entries.isEmpty else { return }
-        var cache: [String: Place] = [:]
+
+        var existing: [String: Place] = [:]
         for place in all(in: household, context: context) {
-            cache[PlaceName.key(place.displayName)] = place
+            existing[PlaceName.key(place.displayName)] = place
         }
-        for entry in entries {
-            guard let payee = entry.payee else { continue }
-            let key = PlaceName.key(payee)
-            guard !key.isEmpty else { continue }
-            if let place = cache[key] {
-                entry.place = place
-            } else if let place = findOrCreate(named: payee, in: household, context: context) {
-                cache[key] = place
-                entry.place = place
+
+        let groups = Dictionary(grouping: entries) { PlaceName.key($0.payee ?? "") }
+        for (key, group) in groups where !key.isEmpty {
+            let place: Place
+            if let match = existing[key] {
+                place = match
+            } else {
+                let spellings = Dictionary(grouping: group.map { PlaceName.clean($0.payee ?? "") }, by: { $0 })
+                let best = spellings.max { lhs, rhs in
+                    let left = (lhs.value.count, lhs.key == lhs.key.uppercased() ? 0 : 1, rhs.key)
+                    let right = (rhs.value.count, rhs.key == rhs.key.uppercased() ? 0 : 1, lhs.key)
+                    return left < right
+                }?.key ?? PlaceName.clean(group[0].payee ?? "")
+                place = Place(context: context)
+                place.name = best
+                place.household = household
+                existing[key] = place
             }
+            for entry in group { entry.place = place }
         }
         if context.hasChanges { try? context.save() }
     }

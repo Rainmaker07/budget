@@ -80,6 +80,10 @@ struct MigrationTests {
         #expect(Set(places.map(\.displayName)) == ["Rewe", "Bakery"])
         let rewe = try #require(places.first { $0.displayName == "Rewe" })
         #expect(rewe.entryList.count == 2)
+
+        // Close the store before the temporary folder is deleted.
+        let storeCoordinator = controller.container.persistentStoreCoordinator
+        for store in storeCoordinator.persistentStores { try storeCoordinator.remove(store) }
     }
 }
 
