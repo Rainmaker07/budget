@@ -14,7 +14,8 @@ struct PlaceSummary: Identifiable {
     static func list(_ places: [Place], period: StatsPeriod, now: Date = .now) -> [PlaceSummary] {
         places
             .map { PlaceSummary(place: $0, stats: PlaceStore.stats(for: $0, period: period, now: now)) }
-            .filter { $0.stats.visits > 0 }
+            // Where money is spent: leave out employers and other income sources.
+            .filter { $0.stats.visits > 0 && $0.stats.total > 0 }
             .sorted { ($0.stats.total, $0.stats.visits) > ($1.stats.total, $1.stats.visits) }
     }
 }
