@@ -390,33 +390,29 @@ private struct PendingCard: View {
             GlassCard(padding: 4, tint: TidePalette.accent(for: .watch)) {
                 VStack(spacing: 0) {
                     ForEach(Array(entries.enumerated()), id: \.element.objectID) { index, entry in
-                        HStack(spacing: 10) {
+                        VStack(alignment: .trailing, spacing: 10) {
                             NavigationLink {
                                 EntryDetailView(entry: entry)
                             } label: {
                                 EntryRow(entry: entry, showsDate: true)
                             }
                             .buttonStyle(.plain)
-                            Button {
-                                withAnimation(.snappy) { RecurringStore.skip(entry, context: context) }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.footnote.weight(.bold))
-                                    .frame(width: 34, height: 34)
+                            HStack(spacing: 8) {
+                                Button {
+                                    withAnimation(.snappy) { RecurringStore.skip(entry, context: context) }
+                                } label: {
+                                    Label("Skip", systemImage: "xmark")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .buttonStyle(.glass)
+                                Button {
+                                    withAnimation(.snappy) { RecurringStore.confirm(entry, context: context) }
+                                } label: {
+                                    Label("Confirm", systemImage: "checkmark")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .buttonStyle(.glassProminent)
                             }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                            .accessibilityLabel("Skip")
-                            Button {
-                                withAnimation(.snappy) { RecurringStore.confirm(entry, context: context) }
-                            } label: {
-                                Image(systemName: "checkmark")
-                                    .font(.footnote.weight(.bold))
-                                    .frame(width: 34, height: 34)
-                            }
-                            .buttonStyle(.glassProminent)
-                            .buttonBorderShape(.circle)
-                            .accessibilityLabel("Confirm")
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
