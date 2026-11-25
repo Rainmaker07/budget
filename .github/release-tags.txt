@@ -2,3 +2,4 @@
 # repository's tags are made by the workflow. One line per release:
 # <tag> <commit>
 v0.1.0 1d5c8ae
+v0.1.1 7ef5354
