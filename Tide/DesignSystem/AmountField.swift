@@ -1,7 +1,7 @@
 import SwiftUI
 import TideKit
 
-enum AmountText {
+enum AmountParser {
     /// Parses "1.234,56", "1,234.56", "1234.5", "12,5" or "€ 40".
     /// The last "." or "," is the decimal point when 1–2 digits follow it;
     /// with 3 digits after it it's a thousands separator ("1.234" = 1234).
@@ -44,8 +44,8 @@ struct AmountTextField: View {
                 .multilineTextAlignment(.trailing)
                 .monospacedDigit()
                 .frame(maxWidth: 140)
-                .onChange(of: text) { value = AmountText.parse(text) ?? 0 }
+                .onChange(of: text) { value = AmountParser.parse(text) ?? 0 }
         }
-        .onAppear { text = AmountText.string(value) }
+        .onAppear { text = AmountParser.string(value) }
     }
 }
