@@ -54,9 +54,10 @@ struct MonthSnapshot {
             return CategoryProgress(category: top, line: CategoryBudgetLine(kind: top.kind, budgeted: budget, actual: spent))
         }
 
-        let expenseTops = household.topCategories(.expense).map(progress)
+        // Hidden categories still count: hiding only removes them from pickers.
+        let expenseTops = household.topCategories(.expense, includeHidden: true).map(progress)
         let transferTops = [CategoryKind.savings, .investment, .debt]
-            .flatMap { household.topCategories($0) }
+            .flatMap { household.topCategories($0, includeHidden: true) }
             .map(progress)
 
         let lines = (expenseTops + transferTops).map(\.line)
@@ -68,7 +69,9 @@ struct MonthSnapshot {
             daysRemaining: month.daysRemaining(from: now, calendar: calendar)
         )
 
-        let isActive: (CategoryProgress) -> Bool = { $0.line.budgeted > 0 || $0.line.actual > 0 }
+        let isActive: (CategoryProgress) -> Bool = {
+            $0.line.actual > 0 || ($0.line.budgeted > 0 && !$0.category.isHidden)
+        }
         return MonthSnapshot(
             month: month,
             summary: summary,

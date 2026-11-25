@@ -3,14 +3,29 @@ import TideKit
 
 struct HomeView: View {
     @Environment(AppModel.self) private var model
+    @State private var sheet: HomeSheet? = HomeSheet(launchValue: LaunchOptions.sheet)
 
     private var snapshot: MonthSnapshot { model.snapshot }
+
+    enum HomeSheet: String, Identifiable {
+        case settings, categories
+        var id: String { rawValue }
+
+        init?(launchValue: String?) {
+            guard let launchValue, let sheet = HomeSheet(rawValue: launchValue) else { return nil }
+            self = sheet
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     HeroSummary(summary: snapshot.summary, currency: model.currency)
+
+                    if snapshot.summary.mode == .limits, !snapshot.summary.hasExpenseBudget {
+                        BudgetSetupCard()
+                    }
 
                     if !snapshot.expenseCategories.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -38,6 +53,12 @@ struct HomeView: View {
                         SectionHeader(title: "Recent")
                         RecentList(entries: snapshot.recentEntries)
                     }
+
+                    Text(AppInfo.fullVersion)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 32)
@@ -50,7 +71,15 @@ struct HomeView: View {
                     MonthSwitcher()
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    HouseholdButton()
+                    HouseholdButton { sheet = .settings }
+                }
+            }
+            .sheet(item: $sheet) { sheet in
+                switch sheet {
+                case .settings:
+                    SettingsView()
+                case .categories:
+                    NavigationStack { CategoriesView() }
                 }
             }
         }
@@ -84,7 +113,7 @@ private struct HeroSummary: View {
                 .font(.tideNumber(64, weight: .bold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .foregroundStyle(summary.headline < 0 ? TidePalette.accent(for: .over) : .primary)
+                .foregroundStyle(summary.headline < 0 && summary.hasExpenseBudget ? TidePalette.accent(for: .over) : .primary)
 
             Text(subtitle)
                 .font(.subheadline)
@@ -102,6 +131,8 @@ private struct HeroSummary: View {
 
     private var subtitle: String {
         switch summary.mode {
+        case .limits where !summary.hasExpenseBudget:
+            return "No budgets set yet"
         case .limits:
             if let daily = summary.dailyAllowance {
                 return "about \(Money(daily, currency).formatted(cents: false)) a day for the rest of the month"
@@ -289,9 +320,14 @@ private struct RecentList: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(entries.enumerated()), id: \.element.objectID) { index, entry in
-                        EntryRow(entry: entry)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
+                        NavigationLink {
+                            EntryDetailView(entry: entry)
+                        } label: {
+                            EntryRow(entry: entry)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
                         if index < entries.count - 1 {
                             Divider().padding(.leading, 60)
                         }
@@ -321,31 +357,40 @@ private struct MonthSwitcher: View {
     }
 }
 
-/// Shows who shares the budget and lets you switch budgeting mode.
+/// The people sharing the budget; opens Settings.
 private struct HouseholdButton: View {
     @Environment(AppModel.self) private var model
+    var action: () -> Void
 
     var body: some View {
-        @Bindable var model = model
-        Menu {
-            Section(model.household.name ?? "Household") {
-                ForEach(model.household.memberList, id: \.objectID) { member in
-                    Label(member.displayName, systemImage: "person.fill")
-                }
-            }
-            Picker("Budgeting style", selection: $model.budgetMode) {
-                ForEach(BudgetMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-        } label: {
+        Button(action: action) {
             HStack(spacing: -6) {
                 ForEach(model.household.memberList.prefix(2), id: \.objectID) { member in
                     MemberAvatar(member: member, size: 26)
                 }
             }
         }
-        .accessibilityLabel("Household and budgeting style")
+        .accessibilityLabel("Settings")
+    }
+}
+
+/// Shown in Limits mode while no budgets exist yet.
+private struct BudgetSetupCard: View {
+    var body: some View {
+        GlassCard {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "chart.pie.fill")
+                    .font(.title2)
+                    .foregroundStyle(TidePalette.accent(for: .calm))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Set up your budgets")
+                        .font(.headline)
+                    Text("Monthly budgets per category arrive in the Plan tab in v0.2. Until then, Tide shows what you've spent.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

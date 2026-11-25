@@ -20,6 +20,7 @@ final class AppModel {
     init(context: NSManagedObjectContext) {
         self.context = context
         let household = HouseholdBootstrap.ensureHousehold(in: context)
+        PlaceStore.backfill(household, context: context)
         let month = MonthKey(date: .now)
         self.household = household
         self.month = month

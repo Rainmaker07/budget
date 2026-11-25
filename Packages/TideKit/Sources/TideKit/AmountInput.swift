@@ -17,6 +17,21 @@ public struct AmountInput: Hashable, Sendable {
         self.init(maxFractionDigits: currency.fractionDigits)
     }
 
+    /// Starts from an existing amount (editing a transaction): 42.1 → "42.10".
+    public init(value: Decimal, currency: CurrencyCode) {
+        self.init(maxFractionDigits: currency.fractionDigits)
+        let digits = currency.fractionDigits
+        let rounded = abs(value.doubleValue) < 1e-12 ? Decimal(0) : value.rounded(scale: digits)
+        guard rounded > 0 else { return }
+        let text = NSDecimalNumber(decimal: rounded).description(withLocale: Locale(identifier: "en_US_POSIX"))
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+        integerDigits = String(parts[0].prefix(Self.maxIntegerDigits))
+        if parts.count > 1, digits > 0 {
+            hasSeparator = true
+            fractionDigits = String(parts[1].prefix(digits)).padding(toLength: digits, withPad: "0", startingAt: 0)
+        }
+    }
+
     public enum Key: Hashable, Sendable {
         case digit(Int)
         case separator

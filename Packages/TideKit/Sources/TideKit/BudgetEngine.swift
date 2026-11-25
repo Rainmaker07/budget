@@ -22,15 +22,19 @@ public struct CategoryBudgetLine: Hashable, Sendable {
     /// What's left. Negative means overspent.
     public var remaining: Decimal { available - actual }
 
+    /// Whether this category has any money budgeted this month.
+    public var isBudgeted: Bool { available > 0 }
+
     /// Fraction of the available budget used. Can exceed 1.
+    /// Zero for unbudgeted categories, which have nothing to measure against.
     public var progress: Double {
-        if available > 0 { return (actual / available).doubleValue }
-        return actual > 0 ? 1 : 0
+        isBudgeted ? (actual / available).doubleValue : 0
     }
 
     public var status: BudgetStatus {
-        if actual > available, actual > 0 { return .over }
-        if available > 0, progress >= BudgetStatus.nearLimitThreshold { return .nearLimit }
+        guard isBudgeted else { return actual > 0 ? .unbudgeted : .onTrack }
+        if actual > available { return .over }
+        if progress >= BudgetStatus.nearLimitThreshold { return .nearLimit }
         return .onTrack
     }
 }
@@ -39,6 +43,8 @@ public enum BudgetStatus: Sendable {
     case onTrack
     case nearLimit
     case over
+    /// Money spent in a category with no budget. Never counts as "over".
+    case unbudgeted
 
     public static let nearLimitThreshold = 0.85
 }
@@ -69,6 +75,10 @@ public struct MonthSummary: Hashable, Sendable {
     /// Headline spread over the remaining days (Limits mode), else nil.
     public var dailyAllowance: Decimal?
 
+    /// Whether any expense budget exists this month. In Limits mode without
+    /// budgets, Tide shows what was spent instead of "safe to spend".
+    public var hasExpenseBudget: Bool { expenseBudgeted > 0 }
+
     /// Fraction of the expense budget spent, 0...1+.
     public var spentFraction: Double {
         expenseBudgeted > 0 ? (expenseSpent / expenseBudgeted).doubleValue : 0
@@ -76,6 +86,7 @@ public struct MonthSummary: Hashable, Sendable {
 
     public var headlineTitle: String {
         switch mode {
+        case .limits where !hasExpenseBudget: "Spent this month"
         case .limits: headline >= 0 ? "Safe to spend" : "Over budget"
         case .everyDollar: headline >= 0 ? "Ready to assign" : "Over-assigned"
         }
@@ -118,6 +129,9 @@ public enum BudgetEngine {
         let headline: Decimal
         var daily: Decimal?
         switch mode {
+        case .limits where expenseBudgeted == 0:
+            // Nothing budgeted yet: show spending, never a negative "safe to spend".
+            headline = expenseSpent
         case .limits:
             headline = expenseBudgeted - expenseSpent - upcomingBills
             if daysRemaining > 0, headline > 0 {
@@ -128,7 +142,9 @@ public enum BudgetEngine {
         }
 
         let health: BudgetHealth
-        if headline < 0 {
+        if mode == .limits, expenseBudgeted == 0 {
+            health = .calm
+        } else if headline < 0 {
             health = .over
         } else if mode == .limits, expenseBudgeted > 0 {
             let spent = (expenseSpent / expenseBudgeted).doubleValue

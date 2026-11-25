@@ -28,6 +28,7 @@ final class Household: TideObject {
     @NSManaged var entries: NSSet?
     @NSManaged var budgets: NSSet?
     @NSManaged var goals: NSSet?
+    @NSManaged var places: NSSet?
 
     var currency: CurrencyCode { CurrencyCode(baseCurrency ?? "EUR") }
 
@@ -53,8 +54,8 @@ final class Household: TideObject {
     }
 
     /// Top-level categories of one kind (the middle level of the tree).
-    func topCategories(_ kind: CategoryKind) -> [BudgetCategory] {
-        categoryList.filter { $0.kind == kind && $0.parent == nil && !$0.isHidden }
+    func topCategories(_ kind: CategoryKind, includeHidden: Bool = false) -> [BudgetCategory] {
+        categoryList.filter { $0.kind == kind && $0.parent == nil && (includeHidden || !$0.isHidden) }
     }
 
     /// Categories a transaction can be filed under: subcategories, or a
@@ -105,13 +106,23 @@ final class BudgetCategory: TideObject {
     /// Subcategories inherit their parent's color so groups read as one.
     var color: Color { TidePalette.color(named: parent?.colorName ?? colorName) }
 
+    /// Visible subcategories, in order.
     var childList: [BudgetCategory] {
-        (children as? Set<BudgetCategory> ?? []).filter { !$0.isHidden }.sorted { $0.sortOrder < $1.sortOrder }
+        allChildren.filter { !$0.isHidden }
     }
 
-    /// This category plus all its descendants.
+    /// All subcategories including hidden ones, in order.
+    var allChildren: [BudgetCategory] {
+        (children as? Set<BudgetCategory> ?? []).sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    /// Hidden itself, or inside a hidden category.
+    var isEffectivelyHidden: Bool { isHidden || (parent?.isHidden ?? false) }
+
+    /// This category plus all its descendants (hidden ones included, so
+    /// their history still counts in totals).
     var subtree: [BudgetCategory] {
-        [self] + childList.flatMap(\.subtree)
+        [self] + allChildren.flatMap(\.subtree)
     }
 
     /// "Food › Groceries"
@@ -190,6 +201,7 @@ final class LedgerEntry: TideObject {
     @NSManaged var account: Account?
     @NSManaged var toAccount: Account?
     @NSManaged var payer: Member?
+    @NSManaged var place: Place?
 
     var kind: EntryKind {
         get { EntryKind(rawValue: kindRaw ?? "") ?? .expense }
@@ -204,9 +216,26 @@ final class LedgerEntry: TideObject {
 
     var isForeign: Bool { original.currency != (household?.currency ?? .eur) }
 
+    /// The place name if there is one, else the category.
     var title: String {
+        if let name = place?.name, !name.isEmpty { return name }
         if let payee, !payee.isEmpty { return payee }
         return category?.displayName ?? kind.title
+    }
+
+    var placeName: String? {
+        if let name = place?.name, !name.isEmpty { return name }
+        if let payee, !payee.isEmpty { return payee }
+        return nil
+    }
+
+    /// Signed amount for totals: spending positive, income negative.
+    var spendingAmount: Decimal {
+        switch kind {
+        case .expense: base
+        case .income: -base
+        case .transfer: 0
+        }
     }
 }
 
@@ -257,6 +286,26 @@ final class SavingsGoal: TideObject {
         guard let targetDate, target > saved else { return nil }
         let months = calendar.dateComponents([.month], from: date, to: targetDate).month ?? 0
         return ((target - saved) / Decimal(max(1, months))).rounded(scale: 0, mode: .up)
+    }
+}
+
+@objc(TDPlace)
+final class Place: TideObject {
+    @NSManaged var name: String?
+    @NSManaged var colorName: String?
+    @NSManaged var emoji: String?
+    @NSManaged var symbol: String?
+    @NSManaged var logoData: Data?
+    @NSManaged var household: Household?
+    @NSManaged var entries: NSSet?
+
+    var displayName: String { name ?? "Place" }
+
+    /// The place's own color, or a stable one derived from its name.
+    var color: Color { LogoAppearance(place: self).color }
+
+    var entryList: [LedgerEntry] {
+        (entries as? Set<LedgerEntry> ?? []).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 }
 

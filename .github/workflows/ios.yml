@@ -22,6 +22,8 @@ jobs:
       BUNDLE_ID: app.tide.Tide
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select newest Xcode
         run: |
@@ -38,8 +40,11 @@ jobs:
           MAJOR=${BEST_VERSION%%.*}
           echo "XCODE_MAJOR=$MAJOR" >> "$GITHUB_ENV"
           if [ "$MAJOR" -lt 27 ]; then
-            echo "::warning::Runner has no Xcode 27 (newest is $BEST_VERSION). Building against iOS $MAJOR as a compile check; the project itself targets iOS 27."
-            echo "DEPLOYMENT_OVERRIDE=IPHONEOS_DEPLOYMENT_TARGET=$MAJOR.0" >> "$GITHUB_ENV"
+            # CI-only: build and test against the newest SDK the runner has.
+            # The committed project keeps targeting iOS 27.
+            echo "::warning::Runner has no Xcode 27 (newest is $BEST_VERSION). Testing against iOS $MAJOR; the project itself targets iOS 27."
+            sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = 27.0;/IPHONEOS_DEPLOYMENT_TARGET = $MAJOR.0;/" Tide.xcodeproj/project.pbxproj
+            sed -i '' "s/.iOS(\"27.0\")/.iOS(\"$MAJOR.0\")/" Packages/TideKit/Package.swift
           fi
           xcrun simctl list runtimes
 
@@ -72,19 +77,18 @@ jobs:
           ')
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      - name: Build app
+      - name: Build app and run app tests
         run: |
           set -o pipefail
-          xcodebuild build \
+          xcodebuild test \
             -project Tide.xcodeproj \
             -scheme Tide \
             -configuration Debug \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            $DEPLOYMENT_OVERRIDE \
-            | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
-          grep -q "BUILD SUCCEEDED" build.log
+            | tee build.log | grep -E "error:|warning: .*Tide/|✔|✘|recorded an issue|TEST (SUCCEEDED|FAILED)" || true
+          grep -q "TEST SUCCEEDED" build.log
 
       - name: Upload build log on failure
         if: failure()
@@ -114,11 +118,14 @@ jobs:
 
           for look in dark light; do
             xcrun simctl ui "$UDID" appearance "$look"
-            shoot "$look-1-home" -tab home
-            shoot "$look-2-quickadd" -tab home -quickadd YES
-            shoot "$look-3-activity" -tab activity
-            shoot "$look-4-home-every-euro" -tab home -mode everyDollar
-            shoot "$look-5-wealth-placeholder" -tab wealth
+            shoot "$look-01-home" -tab home
+            shoot "$look-02-add" -tab home -quickadd YES
+            shoot "$look-03-activity" -tab activity
+            shoot "$look-04-transaction" -tab activity -detail YES
+            shoot "$look-05-places" -tab activity -activity places
+            shoot "$look-06-settings" -tab home -sheet settings
+            shoot "$look-07-categories" -tab home -sheet categories
+            shoot "$look-08-home-every-euro" -tab home -mode everyDollar
           done
           ls -la screenshots
 
@@ -146,4 +153,28 @@ jobs:
           cd shots
           git add -A
           git commit -m "Screenshots for $GITHUB_REF_NAME @ ${GITHUB_SHA::7}" || exit 0
-          git push origin ci-screenshots
+          # GitHub occasionally times out; retry, and never fail a green build over screenshots.
+          for attempt in 1 2 3 4; do
+            if git push origin ci-screenshots; then exit 0; fi
+            sleep $((attempt * 15))
+            git pull --rebase origin ci-screenshots || true
+          done
+          echo "::warning::Could not publish screenshots to ci-screenshots (they're still attached to this run)."
+
+      - name: Create release tags
+        if: github.event_name == 'push'
+        run: |
+          # Tags listed in .github/release-tags.txt ("v0.1.0 <commit>") are created once.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --quiet origin
+          grep -vE '^\s*(#|$)' .github/release-tags.txt | while read -r tag commit; do
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "$tag already exists"
+            elif git cat-file -e "$commit^{commit}" 2>/dev/null; then
+              git tag -a "$tag" "$commit" -m "Tide ${tag#v}"
+              git push origin "$tag" && echo "Created $tag at $commit"
+            else
+              echo "::warning::$tag points at unknown commit $commit"
+            fi
+          done

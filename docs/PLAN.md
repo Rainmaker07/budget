@@ -14,6 +14,8 @@ built for couples sharing one budget.
 | Budgeting | Both modes: **Limits** (cap per category, "safe to spend") and **Every Euro** (zero-based, "ready to assign") |
 | Sharing | One household budget shared via iCloud; who paid, personal categories, splits |
 | Import | Manual entry now. Bank import later via EU open banking (needs a small backend). |
+| Market data | European ETFs + US stocks, ~15-minute delayed quotes (v0.3) |
+| Versioning | Every release bumps the version shown in the app, CHANGELOG and README, and gets a git tag |
 
 ## Category tree
 
@@ -52,18 +54,53 @@ balances. Money moved there is a transfer, not spending.
 - Abroad, you enter what your bank charged; Tide shows the implied rate.
 - Later: European Central Bank daily reference rates as a suggestion.
 
-## Milestones
+## Roadmap
 
-1. **Foundation** ✅ in progress — project, CI, data model, glass design
-   system, Home, Quick Add, basic Activity
-2. **Budgeting** — Plan tab: monthly budgets, both modes in full, goals,
-   recurring items, category editor, Activity search & filters, edit transactions
-3. **Wealth** — accounts, month-end balance check-in, net worth history,
-   savings & investment trends, debt payoff planner
-4. **Reports** — year overview, budget history, cash flow, money in/out
-   flows, trends, ways to improve
-5. **Couples** — iCloud sync, partner invite (CloudKit share), who paid,
-   private categories, splits, partner notifications
-6. **Apple extras** — widgets, Live Activity, Control Center, Siri / App
-   Intents, Face ID lock
-7. **Later** — bank import via an EU open banking provider
+### ✅ v0.1.0 — Foundation
+Project, CI, data model, glass design system, Home, Quick Add, basic Activity.
+
+### ✅ v0.1.1 — Editing, places & settings
+Settings; category management; transaction detail + editor; Revolut-style
+transaction list; places with suggestions, auto-category, totals, logos,
+rename/merge; number pad on tap; unbudgeted-spending fix; version in app.
+
+### v0.2 — Budgeting
+Plan tab with monthly budgets per category (copy last month / average,
+rollover), Every Euro mode in full, goals create/edit with monthly targets,
+recurring items, Activity filters by category/account/amount, ECB exchange
+rate suggestions.
+
+### v0.3 — Wealth
+Accounts in any currency, month-end check-in, net worth history,
+savings and investment trends, debt payoff planner (avalanche / snowball /
+custom, extra payment, debt-free date, interest saved), principal/interest
+split. **Investment holdings with automatic ~15-min delayed quotes** for
+European ETFs (by ISIN/ticker) and US stocks (converted to EUR), gains,
+allocation, contributions vs growth, sold positions with realized gains.
+
+### v0.4 — Reports
+Year overview, monthly/yearly budget history, where money comes from and
+goes (flow chart), cash flow report with forecast, trends and biggest
+movers, ways to improve, CSV/PDF export.
+
+### v0.5 — Couples
+iCloud sync, partner invite (CloudKit share), "who paid" from iCloud
+identity, private categories, splits and who-owes-whom, notifications.
+Needs a paid Apple Developer account.
+
+### v0.6 — Apple extras
+Widgets, Live Activity, Control Center, Siri / Shortcuts, Face ID lock.
+
+### v0.7 — Tide for Mac
+Native macOS app on the same code and iCloud data: sidebar, multiple
+windows, sortable tables, big charts, keyboard shortcuts, menu bar quick add,
+CSV import, printing.
+
+### Later
+- Automatic brand logos for places (logo service, needs an API key)
+- Nearby place suggestions from your location (Apple Maps)
+- Bank import via an EU open banking provider (small backend)
+- Receipt scanning
+- Apple Wallet import if FinanceKit comes to the EU
+- iPad layout
+- v1.0: polish, onboarding, TestFlight / App Store

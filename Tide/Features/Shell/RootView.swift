@@ -38,7 +38,7 @@ struct RootView: View {
                 .matchedTransitionSource(id: "quickAdd", in: namespace)
         }
         .sheet(isPresented: $showsQuickAdd) {
-            QuickAddView()
+            EntryEditorView(mode: .new)
                 .navigationTransition(.zoom(sourceID: "quickAdd", in: namespace))
         }
         .task {

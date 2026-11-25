@@ -36,7 +36,7 @@ enum TidePalette {
     /// Ring color for a single category line.
     static func status(_ status: BudgetStatus, base: Color) -> Color {
         switch status {
-        case .onTrack: base
+        case .onTrack, .unbudgeted: base
         case .nearLimit: accent(for: .watch)
         case .over: accent(for: .over)
         }

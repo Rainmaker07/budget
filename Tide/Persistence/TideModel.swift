@@ -8,25 +8,43 @@ import CoreData
 ///
 /// Everything hangs off `Household`, so sharing a household with a partner
 /// shares the whole budget.
+///
+/// Versions: every schema change adds a new version here instead of editing
+/// an old one. `StoreMigrator` upgrades stores from any older version.
+/// - v1 (0.1.0): households, members, categories, accounts, entries, budgets, snapshots, goals
+/// - v2 (0.1.1): places (shops and vendors) with logos, linked from entries
 enum TideModel {
-    static let shared: NSManagedObjectModel = build()
+    static let currentVersion = 2
 
-    private static func build() -> NSManagedObjectModel {
-        let household = NSEntityDescription(name: "Household", class: Household.self)
+    /// The model the app runs on, bound to Tide's managed object classes.
+    static let shared: NSManagedObjectModel = build(version: currentVersion, bindClasses: true)
+
+    /// Older versions, newest first, for migrating existing stores. Not bound to
+    /// classes, so they never compete with `shared` for the entity classes.
+    static let history: [NSManagedObjectModel] = (1..<currentVersion).reversed().map {
+        build(version: $0, bindClasses: false)
+    }
+
+    static func build(version: Int, bindClasses: Bool) -> NSManagedObjectModel {
+        func entity<T: NSManagedObject>(_ name: String, _ managedClass: T.Type) -> NSEntityDescription {
+            NSEntityDescription(name: name, className: bindClasses ? NSStringFromClass(managedClass) : "NSManagedObject")
+        }
+
+        let household = entity("Household", Household.self)
         household.attributes(common + [
             .string("name", default: "Our Budget"),
             .string("baseCurrency", default: "EUR"),
             .string("budgetModeRaw", default: "limits"),
         ])
 
-        let member = NSEntityDescription(name: "Member", class: Member.self)
+        let member = entity("Member", Member.self)
         member.attributes(common + [
             .string("name", default: ""),
             .string("colorName", default: "blue"),
             .int16("sortOrder"),
         ])
 
-        let category = NSEntityDescription(name: "BudgetCategory", class: BudgetCategory.self)
+        let category = entity("BudgetCategory", BudgetCategory.self)
         category.attributes(common + [
             .string("name", default: ""),
             .string("kindRaw", default: "expense"),
@@ -37,7 +55,7 @@ enum TideModel {
             .bool("isPersonal"),
         ])
 
-        let account = NSEntityDescription(name: "Account", class: Account.self)
+        let account = entity("Account", Account.self)
         account.attributes(common + [
             .string("name", default: ""),
             .string("kindRaw", default: "current"),
@@ -52,7 +70,7 @@ enum TideModel {
             .bool("isArchived"),
         ])
 
-        let entry = NSEntityDescription(name: "LedgerEntry", class: LedgerEntry.self)
+        let entry = entity("LedgerEntry", LedgerEntry.self)
         entry.attributes(common + [
             .string("kindRaw", default: "expense"),
             .date("date"),
@@ -68,20 +86,20 @@ enum TideModel {
             .bool("isPending"),
         ])
 
-        let budget = NSEntityDescription(name: "MonthlyBudget", class: MonthlyBudget.self)
+        let budget = entity("MonthlyBudget", MonthlyBudget.self)
         budget.attributes(common + [
             .string("monthID", default: ""),
             .decimal("amount"),
             .bool("rollsOver"),
         ])
 
-        let snapshot = NSEntityDescription(name: "BalanceSnapshot", class: BalanceSnapshot.self)
+        let snapshot = entity("BalanceSnapshot", BalanceSnapshot.self)
         snapshot.attributes(common + [
             .string("monthID", default: ""),
             .decimal("balance"),
         ])
 
-        let goal = NSEntityDescription(name: "SavingsGoal", class: SavingsGoal.self)
+        let goal = entity("SavingsGoal", SavingsGoal.self)
         goal.attributes(common + [
             .string("name", default: ""),
             .string("kindRaw", default: "save"),
@@ -114,8 +132,25 @@ enum TideModel {
 
         relate(member, "paidEntries", .toMany, .nullifyDeleteRule, entry, "payer", .toOne, .nullifyDeleteRule)
 
+        var entities = [household, member, category, account, entry, budget, snapshot, goal]
+
+        if version >= 2 {
+            let place = entity("Place", Place.self)
+            place.attributes(common + [
+                .string("name", default: ""),
+                .string("colorName"),
+                .string("emoji"),
+                .string("symbol"),
+                .binary("logoData"),
+            ])
+            relate(household, "places", .toMany, .cascadeDeleteRule, place, "household", .toOne, .nullifyDeleteRule)
+            relate(place, "entries", .toMany, .nullifyDeleteRule, entry, "place", .toOne, .nullifyDeleteRule)
+            entities.append(place)
+        }
+
         let model = NSManagedObjectModel()
-        model.entities = [household, member, category, account, entry, budget, snapshot, goal]
+        model.entities = entities
+        model.versionIdentifiers = ["\(version)"]
         return model
     }
 
@@ -178,13 +213,17 @@ struct AttributeSpec {
     static func bool(_ name: String) -> AttributeSpec {
         AttributeSpec(name: name, type: .booleanAttributeType, defaultValue: NSNumber(value: false))
     }
+    /// Binary data stored outside the database when large (photos).
+    static func binary(_ name: String) -> AttributeSpec {
+        AttributeSpec(name: name, type: .binaryDataAttributeType, defaultValue: nil)
+    }
 }
 
 private extension NSEntityDescription {
-    convenience init<T: NSManagedObject>(name: String, class managedClass: T.Type) {
+    convenience init(name: String, className: String) {
         self.init()
         self.name = name
-        self.managedObjectClassName = NSStringFromClass(managedClass)
+        self.managedObjectClassName = className
     }
 
     func attributes(_ specs: [AttributeSpec]) {
@@ -194,6 +233,9 @@ private extension NSEntityDescription {
             attribute.attributeType = spec.type
             attribute.isOptional = true
             attribute.defaultValue = spec.defaultValue
+            if spec.type == .binaryDataAttributeType {
+                attribute.allowsExternalBinaryDataStorage = true
+            }
             return attribute
         }
     }

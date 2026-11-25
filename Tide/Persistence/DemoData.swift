@@ -151,6 +151,14 @@ enum DemoData {
             }
         }
 
+        // Places: link entries to Place records, and give a few their own logos.
+        PlaceStore.backfill(household, context: context)
+        for (name, emoji) in [("Blue Door Coffee", "☕️"), ("Café Fleur", "🥐"), ("Climbing gym", "🧗"), ("Japan trip", "🗾")] {
+            PlaceStore.find(named: name, in: household, context: context)?.emoji = emoji
+        }
+        PlaceStore.find(named: "Rewe", in: household, context: context)?.colorName = "red"
+        PlaceStore.find(named: "Edeka", in: household, context: context)?.colorName = "yellow"
+
         // Goals.
         let japan = SavingsGoal(context: context)
         japan.name = "Japan trip"
