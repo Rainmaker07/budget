@@ -239,3 +239,106 @@ import Testing
         #expect(monthly.first?.month == MonthKey(year: 2026, month: 9))
     }
 }
+
+@Suite struct RecurrenceTests {
+    var calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        return calendar
+    }()
+
+    func day(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        calendar.date(from: DateComponents(year: y, month: m, day: d, hour: 9))!
+    }
+
+    @Test func monthlyOnThe31stClampsToMonthEnd() {
+        let rent = Recurrence(cadence: .monthly, start: day(2026, 1, 31))
+        let dates = rent.occurrences(from: day(2026, 1, 1), through: day(2026, 4, 30), calendar: calendar)
+        #expect(dates == [day(2026, 1, 31), day(2026, 2, 28), day(2026, 3, 31), day(2026, 4, 30)])
+    }
+
+    @Test func everyTwoWeeks() {
+        let rule = Recurrence(cadence: .weekly, interval: 2, start: day(2026, 11, 2))
+        #expect(rule.next(after: day(2026, 11, 2), calendar: calendar) == day(2026, 11, 16))
+        #expect(rule.occurrences(from: day(2026, 11, 10), through: day(2026, 12, 1), calendar: calendar).count == 2)
+    }
+
+    @Test func quarterlyAndYearlyWithEnd() {
+        let quarterly = Recurrence(cadence: .monthly, interval: 3, start: day(2026, 1, 15))
+        #expect(quarterly.next(after: day(2026, 2, 1), calendar: calendar) == day(2026, 4, 15))
+        let yearly = Recurrence(cadence: .yearly, start: day(2024, 2, 29), end: day(2026, 12, 31))
+        #expect(yearly.occurrences(from: day(2024, 1, 1), through: day(2030, 1, 1), calendar: calendar)
+                == [day(2024, 2, 29), day(2025, 2, 28), day(2026, 2, 28)])
+        #expect(yearly.next(after: day(2026, 3, 1), calendar: calendar) == nil)
+    }
+}
+
+@Suite struct BudgetingTests {
+    @Test func rolloverCarriesLeftoverAndOverspending() {
+        #expect(Rollover.carryover(after: []) == 0)
+        #expect(Rollover.carryover(after: [MonthFlow(budgeted: 100, actual: 70, rollsOver: true)]) == 30)
+        let chain = [
+            MonthFlow(budgeted: 100, actual: 70, rollsOver: true),  // +30
+            MonthFlow(budgeted: 100, actual: 150, rollsOver: true), // 30 + 100 - 150 = -20
+        ]
+        #expect(Rollover.carryover(after: chain) == -20)
+        let reset = chain + [MonthFlow(budgeted: 100, actual: 10, rollsOver: false)]
+        #expect(Rollover.carryover(after: reset) == 0)
+    }
+
+    @Test func unassignedCarry() {
+        #expect(EveryEuro.unassignedCarryIn(incomeBefore: 6000, assignedBefore: 5800) == 200)
+    }
+
+    @Test func averageSuggestion() {
+        #expect(BudgetSuggestion.average([100, 0, 51]) == 51)
+        #expect(BudgetSuggestion.average([]) == 0)
+    }
+
+    @Test func goalPace() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1))!
+        let deadline = calendar.date(from: DateComponents(year: 2026, month: 12, day: 31))!
+        let mid = calendar.date(from: DateComponents(year: 2026, month: 7, day: 2))!
+        let goal = GoalProgress(target: 1200, saved: 300, start: start, deadline: deadline)
+        #expect(goal.pace(at: mid) == .behind)
+        #expect(goal.monthsLeft(from: mid, calendar: calendar) == 6)
+        #expect(goal.monthlyNeeded(from: mid, calendar: calendar) == 150)
+        #expect(GoalProgress(target: 1200, saved: 700, start: start, deadline: deadline).pace(at: mid) == .ahead)
+        #expect(GoalProgress(target: 100, saved: 100, start: start, deadline: nil).pace(at: mid) == .done)
+    }
+}
+
+@Suite struct ECBRatesTests {
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+      <gesmes:subject>Reference rates</gesmes:subject>
+      <Cube>
+        <Cube time="2026-11-24">
+          <Cube currency="USD" rate="1.1612"/>
+          <Cube currency="GBP" rate="0.8526"/>
+        </Cube>
+        <Cube time="2026-11-23">
+          <Cube currency="USD" rate="1.1580"/>
+          <Cube currency="GBP" rate="0.8500"/>
+        </Cube>
+      </Cube>
+    </gesmes:Envelope>
+    """
+
+    @Test func parsesAndConverts() throws {
+        let rates = try #require(ECBRates.parse(Data(xml.utf8)))
+        #expect(rates.days.count == 2)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let monday = utc.date(from: DateComponents(year: 2026, month: 11, day: 23, hour: 20))!
+        let gbpToEur = try #require(rates.rate(from: .gbp, to: .eur, on: monday))
+        #expect(gbpToEur.convert(Money(Decimal(string: "42.50")!, .gbp)).amount == 50)
+        let later = utc.date(from: DateComponents(year: 2026, month: 11, day: 30))!
+        #expect(rates.rate(from: .eur, to: .usd, on: later)?.rate == Decimal(string: "1.1612"))
+        #expect(rates.rate(from: "XYZ", to: .eur, on: later) == nil)
+        #expect(ECBRates.parse(Data("nonsense".utf8)) == nil)
+    }
+}

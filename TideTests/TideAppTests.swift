@@ -87,6 +87,45 @@ struct MigrationTests {
     }
 }
 
+@Suite("Store migration v2")
+@MainActor
+struct MigrationV2Tests {
+    @Test func upgradesVersion2StoreKeepingPlaces() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Tide.sqlite")
+
+        let version2 = try #require(TideModel.history.first { $0.entitiesByName["Place"] != nil })
+        let coordinator = NSPersistentStoreCoordinator(managedObjectModel: version2)
+        try coordinator.addPersistentStore(ofType: NSSQLiteStoreType, configurationName: nil, at: url,
+                                           options: StoreMigrator.storeOptions)
+        let oldContext = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+        oldContext.persistentStoreCoordinator = coordinator
+        let household = NSEntityDescription.insertNewObject(forEntityName: "Household", into: oldContext)
+        let place = NSEntityDescription.insertNewObject(forEntityName: "Place", into: oldContext)
+        place.setValue("Rewe", forKey: "name")
+        place.setValue(household, forKey: "household")
+        let goal = NSEntityDescription.insertNewObject(forEntityName: "SavingsGoal", into: oldContext)
+        goal.setValue("Trip", forKey: "name")
+        goal.setValue(household, forKey: "household")
+        try oldContext.save()
+        for store in coordinator.persistentStores { try coordinator.remove(store) }
+
+        #expect(try StoreMigrator.migrateIfNeeded(storeAt: url))
+        let controller = PersistenceController(storeURL: url)
+        let context = controller.viewContext
+        let places = try context.fetch(NSFetchRequest<Place>(entityName: "Place"))
+        #expect(places.first?.name == "Rewe")
+        let goals = try context.fetch(NSFetchRequest<SavingsGoal>(entityName: "SavingsGoal"))
+        #expect(goals.first?.targetMonths == 0)
+        #expect(try context.fetch(NSFetchRequest<RecurringRule>(entityName: "RecurringRule")).isEmpty)
+
+        let storeCoordinator = controller.container.persistentStoreCoordinator
+        for store in storeCoordinator.persistentStores { try storeCoordinator.remove(store) }
+    }
+}
+
 @Suite("Categories")
 @MainActor
 struct CategoryTests {
@@ -207,5 +246,112 @@ struct SummaryTests {
         #expect(snapshot.summary.health == .calm)
         #expect(snapshot.summary.headlineTitle == "Spent this month")
         #expect(snapshot.summary.headline == 80)
+    }
+}
+
+@Suite("Budgets")
+@MainActor
+struct BudgetTests {
+    let month = MonthKey(date: .now)
+
+    @Test func setCopyAndMove() {
+        let f = Fixture()
+        let groceries = f.category("Groceries")
+        let dining = f.category("Restaurants")
+        BudgetStore.setBudget(400, rollsOver: false, for: groceries, month: month.previous, context: f.context)
+        BudgetStore.setBudget(150, rollsOver: true, for: dining, month: month.previous, context: f.context)
+        #expect(BudgetStore.copyPreviousMonth(into: month, household: f.household, context: f.context) == 2)
+        #expect(BudgetStore.copyPreviousMonth(into: month, household: f.household, context: f.context) == 0)
+        #expect(BudgetStore.budget(for: dining, month: month, context: f.context)?.rollsOver == true)
+
+        BudgetStore.move(50, from: groceries, to: dining, month: month, context: f.context)
+        #expect(BudgetStore.budget(for: groceries, month: month, context: f.context)?.value == 350)
+        #expect(BudgetStore.budget(for: dining, month: month, context: f.context)?.value == 200)
+
+        BudgetStore.setBudget(0, rollsOver: false, for: groceries, month: month, context: f.context)
+        #expect(BudgetStore.budget(for: groceries, month: month, context: f.context) == nil)
+    }
+
+    @Test func rolloverCarriesIntoThisMonth() {
+        let f = Fixture()
+        let dining = f.category("Restaurants")
+        BudgetStore.setBudget(150, rollsOver: true, for: dining, month: month.previous, context: f.context)
+        BudgetStore.setBudget(150, rollsOver: true, for: dining, month: month, context: f.context)
+        f.entry(100, category: "Restaurants", date: month.previous.firstDay().addingTimeInterval(86_400 * 3))
+        let snapshot = MonthSnapshot.build(for: month, household: f.household, context: f.context)
+        let line = snapshot.lines[dining.objectID]
+        #expect(line?.carryover == 50)
+        #expect(line?.available == 200)
+    }
+
+    @Test func everyEuroCarriesUnassignedIncome() {
+        let f = Fixture()
+        f.household.budgetMode = .everyDollar
+        f.entry(3000, category: "Salary", kind: .income, date: month.previous.firstDay().addingTimeInterval(3600))
+        BudgetStore.setBudget(2500, rollsOver: false, for: f.category("Rent"), month: month.previous, context: f.context)
+        BudgetStore.setBudget(300, rollsOver: false, for: f.category("Groceries"), month: month, context: f.context)
+        let snapshot = MonthSnapshot.build(for: month, household: f.household, context: f.context)
+        #expect(snapshot.summary.headline == 200) // 3000 - 2500 carried in, 300 assigned this month, no income yet
+    }
+
+    @Test func averagesFromHistory() {
+        let f = Fixture()
+        f.entry(90, category: "Groceries", date: month.adding(months: -1).firstDay().addingTimeInterval(3600))
+        f.entry(120, category: "Groceries", date: month.adding(months: -2).firstDay().addingTimeInterval(3600))
+        #expect(BudgetStore.fillWithAverages(month, household: f.household, context: f.context) == 1)
+        #expect(BudgetStore.budget(for: f.category("Groceries"), month: month, context: f.context)?.value == 70)
+    }
+}
+
+@Suite("Recurring")
+@MainActor
+struct RecurringTests {
+    private func rule(_ f: Fixture, start: Date, autoPost: Bool, cadence: Cadence = .weekly) -> RecurringRule {
+        let rule = RecurringRule(context: f.context)
+        rule.name = "Cleaning"
+        rule.kind = .expense
+        rule.amount = Decimal(45).number
+        rule.cadence = cadence
+        rule.interval = 1
+        rule.startDate = start
+        rule.autoPost = autoPost
+        rule.category = f.category("Household")
+        rule.household = f.household
+        try? f.context.save()
+        return rule
+    }
+
+    @Test func postsDueOccurrencesOnce() {
+        let f = Fixture()
+        let now = Date.now
+        let created = rule(f, start: now.addingTimeInterval(-15 * 86_400), autoPost: true)
+        #expect(RecurringStore.postDue(in: f.household, context: f.context, now: now) == 3) // -15, -8, -1 days
+        #expect(RecurringStore.postDue(in: f.household, context: f.context, now: now) == 0)
+        #expect((created.entries as? Set<LedgerEntry>)?.count == 3)
+        #expect(created.nextDate.map { $0 > now } == true)
+    }
+
+    @Test func confirmationFlow() {
+        let f = Fixture()
+        let now = Date.now
+        _ = rule(f, start: now.addingTimeInterval(-86_400), autoPost: false)
+        RecurringStore.postDue(in: f.household, context: f.context, now: now)
+        let pending = RecurringStore.pending(in: f.household, context: f.context)
+        #expect(pending.count == 1)
+        let before = MonthSnapshot.build(for: MonthKey(date: now), household: f.household, context: f.context)
+        #expect(before.summary.expenseSpent == 0)
+        RecurringStore.confirm(pending[0], context: f.context)
+        #expect(RecurringStore.pending(in: f.household, context: f.context).isEmpty)
+    }
+
+    @Test func upcomingCountsFutureOccurrencesThisMonth() {
+        let f = Fixture()
+        let calendar = Calendar.current
+        let month = MonthKey(date: .now)
+        let first = month.firstDay()
+        let now = calendar.date(byAdding: .hour, value: 12, to: first)! // the 1st, midday
+        let monthly = rule(f, start: calendar.date(byAdding: .day, value: 14, to: first)!, autoPost: true, cadence: .monthly)
+        monthly.amount = Decimal(100).number
+        #expect(RecurringStore.upcomingExpenses(in: month, household: f.household, context: f.context, now: now) == 100)
     }
 }

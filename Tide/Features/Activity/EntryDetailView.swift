@@ -10,6 +10,7 @@ struct EntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var editorMode: EntryEditorView.Mode?
+    @State private var recurringTarget: RecurringEditorView.Target?
     @State private var confirmingDelete = false
 
     var body: some View {
@@ -18,9 +19,13 @@ struct EntryDetailView: View {
             VStack(spacing: 20) {
                 header(currency: currency)
                 detailsCard
+                if entry.isPending {
+                    pendingCard
+                }
                 if let place = entry.place {
                     placeCard(place, currency: currency)
                 }
+                recurringCard
                 actions
             }
             .padding(.horizontal, 16)
@@ -35,6 +40,9 @@ struct EntryDetailView: View {
         }
         .sheet(item: $editorMode) { mode in
             EntryEditorView(mode: mode)
+        }
+        .sheet(item: $recurringTarget) { target in
+            RecurringEditorView(target: target)
         }
         .confirmationDialog("Delete this transaction?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -147,9 +155,68 @@ struct EntryDetailView: View {
         .buttonStyle(.plain)
     }
 
+    private var pendingCard: some View {
+        GlassCard(padding: 14, tint: TidePalette.accent(for: .watch)) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Waiting for you to confirm")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Change the amount with Edit if it differs this time.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Confirm") { RecurringStore.confirm(entry, context: context) }
+                    .buttonStyle(.glassProminent)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recurringCard: some View {
+        if let rule = entry.recurringRule {
+            Button {
+                recurringTarget = .edit(rule)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "repeat")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Repeats · \(rule.displayName)")
+                            .font(.subheadline.weight(.semibold))
+                        Text([rule.scheduleTitle, rule.nextDate.map { "next \($0.formatted(.dateTime.day().month(.abbreviated)))" }]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(14)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var actions: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
+                if entry.recurringRule == nil {
+                    Button {
+                        recurringTarget = .from(entry)
+                    } label: {
+                        Label("Repeat", systemImage: "repeat")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
+                }
+
                 Button {
                     editorMode = .duplicate(entry)
                 } label: {

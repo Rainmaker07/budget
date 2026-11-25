@@ -35,4 +35,5 @@
   `ci-screenshots` branch), and release tags. If the runner lacks Xcode 27
   it tests against the newest SDK it has.
 - Launch arguments for demos/screenshots: `-demo YES`, `-tab`, `-quickadd YES`,
-  `-mode everyDollar`, `-activity places`, `-detail YES`, `-sheet settings|categories`.
+  `-mode everyDollar`, `-activity places`, `-detail YES`, `-sheet settings|categories`
+  (`-tab plan` for the Plan tab).

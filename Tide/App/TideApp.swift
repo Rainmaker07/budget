@@ -4,6 +4,7 @@ import TideKit
 @main
 struct TideApp: App {
     @State private var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let persistence = PersistenceController.shared
@@ -18,6 +19,9 @@ struct TideApp: App {
             RootView()
                 .environment(model)
                 .environment(\.managedObjectContext, model.context)
+        }
+        .onChange(of: scenePhase) {
+            if scenePhase == .active { model.becameActive() }
         }
     }
 }

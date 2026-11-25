@@ -3,6 +3,44 @@
 All notable changes to Tide. Versions follow `MAJOR.MINOR.PATCH`; the
 version is shown in the app (Settings → About, and at the bottom of Home).
 
+## 0.2.0 — Budgeting
+
+### New
+- **Plan tab**: set a budget for every category each month. Tap a category
+  to set its amount, with suggestions from last month, your 3-month average,
+  and what's been spent so far. Step between months with the arrows.
+- **Copy last month** and **Fill with 3-month averages** to set up a month
+  in one tap.
+- **Roll over**: per category, unspent money (or overspending) moves into
+  next month's budget.
+- **Every Euro mode in full**: income you received but didn't assign carries
+  into the next month; the Plan header shows what's ready to assign (or
+  over-assigned). **Move money** between categories.
+- **Goals**: create and edit goals to save up, build an emergency fund
+  (N months of your average spending), or pay off a debt. Link a category and
+  transfers there count automatically. Shows how much is needed each month
+  and whether you're ahead, on pace or behind.
+- **Recurring items**: salary, rent and subscriptions are added on their date,
+  weekly, monthly, quarterly or yearly. Choose "Add automatically" or "Ask me
+  to confirm"; items to confirm appear on Home with Confirm / Skip.
+  "Repeat" on any transaction turns it into a recurring item.
+- **Upcoming bills**: safe to spend subtracts recurring expenses still due
+  this month.
+- **Activity filters** by category, account and amount range.
+- **ECB exchange rates**: when paying in another currency, Tide suggests the
+  euro amount using the European Central Bank's reference rate for that day
+  (one tap to use it; your bank's amount is still best).
+
+### Changed
+- "Set up your budgets" on Home now takes you to the Plan tab.
+- Goal cards show real progress and pace.
+
+### Under the hood
+- Database schema v3 (recurring items, goal months) with automatic upgrade
+  from 0.1.0 and 0.1.1 data.
+- New tests: recurrence schedules, carry-over, Every Euro, goal pace, ECB
+  parsing, budgets, recurring posting, v2 → v3 migration.
+
 ## 0.1.1 — Editing, places & settings
 
 ### New

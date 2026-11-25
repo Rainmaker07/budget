@@ -13,8 +13,9 @@ import CoreData
 /// an old one. `StoreMigrator` upgrades stores from any older version.
 /// - v1 (0.1.0): households, members, categories, accounts, entries, budgets, snapshots, goals
 /// - v2 (0.1.1): places (shops and vendors) with logos, linked from entries
+/// - v3 (0.2.0): recurring items (linked to the entries they create), goal months
 enum TideModel {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     /// The model the app runs on, bound to Tide's managed object classes.
     static let shared: NSManagedObjectModel = build(version: currentVersion, bindClasses: true)
@@ -148,6 +149,36 @@ enum TideModel {
             entities.append(place)
         }
 
+        if version >= 3 {
+            // Emergency-fund goals: how many months of expenses to keep.
+            goal.properties += [AttributeSpec.int16("targetMonths")].map(makeAttribute)
+
+            let rule = entity("RecurringRule", RecurringRule.self)
+            rule.attributes(common + [
+                .string("name", default: ""),
+                .string("kindRaw", default: "expense"),
+                .decimal("amount"),
+                .string("currencyCode", default: "EUR"),
+                .string("cadenceRaw", default: "monthly"),
+                .int16("interval"),
+                .date("startDate"),
+                .date("nextDate"),
+                .date("endDate"),
+                .bool("autoPost"),
+                .bool("isPaused"),
+                .string("note"),
+            ])
+            relate(household, "recurringRules", .toMany, .cascadeDeleteRule, rule, "household", .toOne, .nullifyDeleteRule)
+            relate(category, "recurringRules", .toMany, .nullifyDeleteRule, rule, "category", .toOne, .nullifyDeleteRule)
+            relate(account, "recurringRules", .toMany, .nullifyDeleteRule, rule, "account", .toOne, .nullifyDeleteRule)
+            relate(member, "recurringRules", .toMany, .nullifyDeleteRule, rule, "payer", .toOne, .nullifyDeleteRule)
+            relate(rule, "entries", .toMany, .nullifyDeleteRule, entry, "recurringRule", .toOne, .nullifyDeleteRule)
+            if let place = entities.first(where: { $0.name == "Place" }) {
+                relate(place, "recurringRules", .toMany, .nullifyDeleteRule, rule, "place", .toOne, .nullifyDeleteRule)
+            }
+            entities.append(rule)
+        }
+
         let model = NSManagedObjectModel()
         model.entities = entities
         model.versionIdentifiers = ["\(version)"]
@@ -227,16 +258,18 @@ private extension NSEntityDescription {
     }
 
     func attributes(_ specs: [AttributeSpec]) {
-        properties += specs.map { spec in
-            let attribute = NSAttributeDescription()
-            attribute.name = spec.name
-            attribute.attributeType = spec.type
-            attribute.isOptional = true
-            attribute.defaultValue = spec.defaultValue
-            if spec.type == .binaryDataAttributeType {
-                attribute.allowsExternalBinaryDataStorage = true
-            }
-            return attribute
-        }
+        properties += specs.map(makeAttribute)
     }
+}
+
+private func makeAttribute(_ spec: AttributeSpec) -> NSAttributeDescription {
+    let attribute = NSAttributeDescription()
+    attribute.name = spec.name
+    attribute.attributeType = spec.type
+    attribute.isOptional = true
+    attribute.defaultValue = spec.defaultValue
+    if spec.type == .binaryDataAttributeType {
+        attribute.allowsExternalBinaryDataStorage = true
+    }
+    return attribute
 }

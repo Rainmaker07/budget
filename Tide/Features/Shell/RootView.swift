@@ -9,12 +9,12 @@ enum AppTab: String, CaseIterable, Hashable {
 /// glass accessory slot and morphs into the Quick Add sheet.
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @State private var tab: AppTab = LaunchOptions.initialTab
     @State private var showsQuickAdd = false
     @Namespace private var namespace
 
     var body: some View {
-        TabView(selection: $tab) {
+        @Bindable var model = model
+        TabView(selection: $model.selectedTab) {
             Tab("Home", systemImage: "drop.fill", value: AppTab.home) {
                 HomeView()
             }
@@ -22,7 +22,7 @@ struct RootView: View {
                 ActivityView()
             }
             Tab("Plan", systemImage: "chart.pie.fill", value: AppTab.plan) {
-                ComingSoonView(feature: .plan)
+                PlanView()
             }
             Tab("Wealth", systemImage: "building.columns.fill", value: AppTab.wealth) {
                 ComingSoonView(feature: .wealth)

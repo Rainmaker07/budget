@@ -64,17 +64,18 @@ Settings; category management; transaction detail + editor; Revolut-style
 transaction list; places with suggestions, auto-category, totals, logos,
 rename/merge; number pad on tap; unbudgeted-spending fix; version in app.
 
-### v0.2 — Budgeting
+### ✅ v0.2.0 — Budgeting
 Plan tab with monthly budgets per category (copy last month / average,
 rollover), Every Euro mode in full, goals create/edit with monthly targets,
-recurring items, Activity filters by category/account/amount, ECB exchange
-rate suggestions.
+recurring items (auto or confirm) with upcoming bills in safe to spend,
+Activity filters by category/account/amount, ECB exchange rate suggestions.
+(Net worth milestone goals move to v0.3, where accounts and balances arrive.)
 
 ### v0.3 — Wealth
 Accounts in any currency, month-end check-in, net worth history,
 savings and investment trends, debt payoff planner (avalanche / snowball /
 custom, extra payment, debt-free date, interest saved), principal/interest
-split. **Investment holdings with automatic ~15-min delayed quotes** for
+split. Net worth milestone goals. **Investment holdings with automatic ~15-min delayed quotes** for
 European ETFs (by ISIN/ticker) and US stocks (converted to EUR), gains,
 allocation, contributions vs growth, sold positions with realized gains.
 

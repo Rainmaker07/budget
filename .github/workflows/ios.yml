@@ -126,6 +126,8 @@ jobs:
             shoot "$look-06-settings" -tab home -sheet settings
             shoot "$look-07-categories" -tab home -sheet categories
             shoot "$look-08-home-every-euro" -tab home -mode everyDollar
+            shoot "$look-09-plan" -tab plan
+            shoot "$look-10-plan-every-euro" -tab plan -mode everyDollar
           done
           ls -la screenshots
 

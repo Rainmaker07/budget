@@ -31,6 +31,8 @@ struct ActivityView: View {
     @State private var editing: ObjectRef<LedgerEntry>?
     @State private var deleting: ObjectRef<LedgerEntry>?
     @State private var path = NavigationPath()
+    @State private var advanced = AdvancedFilter()
+    @State private var showsFilterSheet = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -77,6 +79,9 @@ struct ActivityView: View {
                     PlaceDetailView(place: place)
                 }
             }
+            .sheet(isPresented: $showsFilterSheet) {
+                ActivityFilterSheet(filter: $advanced)
+            }
             .sheet(item: $editing) { ref in
                 EntryEditorView(mode: .edit(ref.object))
             }
@@ -101,6 +106,7 @@ struct ActivityView: View {
         ScrollView(.horizontal) {
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
+                    filterButton
                     chip("All", isOn: filter == .all) { filter = .all }
                     chip("Expenses", isOn: filter == .kind(.expense)) { filter = .kind(.expense) }
                     chip("Income", isOn: filter == .kind(.income)) { filter = .kind(.income) }
@@ -117,6 +123,27 @@ struct ActivityView: View {
             }
         }
         .scrollIndicators(.hidden)
+    }
+
+    private var filterButton: some View {
+        Button {
+            showsFilterSheet = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease")
+                if advanced.count > 0 {
+                    Text("\(advanced.count)")
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(advanced.count > 0 ? .white : .primary)
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .glassEffect(advanced.count > 0 ? .regular.tint(TidePalette.accent(for: model.snapshot.summary.health)).interactive() : .regular.interactive(),
+                         in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(advanced.count > 0 ? "Filters, \(advanced.count) on" : "Filters")
     }
 
     private func chip(_ title: String, isOn: Bool, member: Member? = nil, action: @escaping () -> Void) -> some View {
@@ -191,6 +218,7 @@ struct ActivityView: View {
             case .kind(let kind): if entry.kind != kind { return false }
             case .member(let id): if entry.payer?.objectID != id { return false }
             }
+            if !advanced.matches(entry) { return false }
             guard !query.isEmpty else { return true }
             let haystack = [entry.title, entry.category?.path ?? "", entry.note ?? "",
                             entry.base.formatted(), entry.original.currency.rawValue]
@@ -262,5 +290,83 @@ struct ActivityView: View {
         default:
             EmptyView()
         }
+    }
+}
+
+/// Category, account and amount filters for Activity.
+struct AdvancedFilter: Equatable {
+    var categoryID: NSManagedObjectID?
+    var accountID: NSManagedObjectID?
+    var minimum: Decimal = 0
+    var maximum: Decimal = 0
+
+    var count: Int {
+        [categoryID != nil, accountID != nil, minimum > 0 || maximum > 0].filter { $0 }.count
+    }
+
+    func matches(_ entry: LedgerEntry) -> Bool {
+        if let categoryID {
+            // A top-level category matches its subcategories too.
+            guard let category = entry.category,
+                  category.objectID == categoryID || category.parent?.objectID == categoryID else { return false }
+        }
+        if let accountID, entry.account?.objectID != accountID, entry.toAccount?.objectID != accountID { return false }
+        if minimum > 0, entry.base < minimum { return false }
+        if maximum > 0, entry.base > maximum { return false }
+        return true
+    }
+}
+
+struct ActivityFilterSheet: View {
+    @Binding var filter: AdvancedFilter
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Category") {
+                    Picker("Category", selection: $filter.categoryID) {
+                        Text("Any").tag(NSManagedObjectID?.none)
+                        ForEach(CategoryKind.allCases) { kind in
+                            Section(kind.title) {
+                                ForEach(model.household.topCategories(kind, includeHidden: true), id: \.objectID) { top in
+                                    Text(top.displayName).tag(Optional(top.objectID))
+                                    ForEach(top.allChildren, id: \.objectID) { child in
+                                        Text("   \(child.displayName)").tag(Optional(child.objectID))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                }
+                Section("Account") {
+                    Picker("Account", selection: $filter.accountID) {
+                        Text("Any").tag(NSManagedObjectID?.none)
+                        ForEach(model.household.accountList, id: \.objectID) { account in
+                            Text(account.displayName).tag(Optional(account.objectID))
+                        }
+                    }
+                }
+                Section("Amount") {
+                    AmountTextField(title: "At least", value: $filter.minimum, currency: model.currency)
+                    AmountTextField(title: "At most", value: $filter.maximum, currency: model.currency)
+                }
+                if filter.count > 0 {
+                    Section {
+                        Button("Clear filters", role: .destructive) { filter = AdvancedFilter() }
+                    }
+                }
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", systemImage: "checkmark") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

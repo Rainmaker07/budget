@@ -1,6 +1,6 @@
 # Tide
 
-**Version 0.1.1** · [Changelog](CHANGELOG.md) · [Roadmap](docs/PLAN.md)
+**Version 0.2.0** · [Changelog](CHANGELOG.md) · [Roadmap](docs/PLAN.md)
 
 A calm, Liquid Glass budget app for couples, for iOS 27.
 
@@ -10,12 +10,17 @@ any currency allowed for spending abroad.
 
 ## Features
 
-- **Home**: safe to spend (or ready to assign), budget rings per category,
-  goals, recent transactions; the background tints with how the month is going
+- **Home**: safe to spend (or ready to assign), recurring items to confirm,
+  budget rings per category, goals, recent transactions; the background
+  tints with how the month is going
+- **Plan**: monthly budgets per category with suggestions, copy last month,
+  3-month averages, roll-over, Every Euro assigning and moving money, goals
+  with monthly targets and pace, recurring income and bills
 - **Quick Add**: amount pad on tap, place with suggestions, category filled
-  in from your last visit, who paid, account, note, any currency
-- **Activity**: one card per day, search, filters, and a **Places** view with
-  total spent per shop or vendor
+  in from your last visit, who paid, account, note, any currency (with ECB
+  exchange rate suggestions)
+- **Activity**: one card per day, search, filters (type, person, category,
+  account, amount), and a **Places** view with total spent per shop or vendor
 - **Transaction detail & editing**: edit, duplicate, delete
 - **Places**: totals, visits, 6-month chart, logos, rename and merge
 - **Categories**: income, expenses, savings, investments and debts with
@@ -54,7 +59,7 @@ Tide/
   DesignSystem/         Glass components, background, palette, logos, pickers
   Features/             Home, Quick Add / editor, Activity, Places, Settings…
   Persistence/          Core Data schema (versioned, in code), migration, stores, demo data
-TideTests/              App tests: migration, categories, places
+TideTests/              App tests: migrations, categories, places, budgets, recurring
 Packages/TideKit/       Pure Swift logic: money, currencies, months, budget engine, places (+ tests)
 .github/workflows/      CI: tests, build, simulator screenshots, release tags
 ```

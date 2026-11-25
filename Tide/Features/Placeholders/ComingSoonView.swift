@@ -23,9 +23,9 @@ struct ComingSoonView: View {
 
         var milestone: String {
             switch self {
-            case .plan: "Milestone 2"
-            case .wealth: "Milestone 3"
-            case .reports: "Milestone 4"
+            case .plan: "v0.2"
+            case .wealth: "v0.3"
+            case .reports: "v0.4"
             }
         }
 

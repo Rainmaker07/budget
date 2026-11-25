@@ -23,8 +23,12 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     HeroSummary(summary: snapshot.summary, currency: model.currency)
 
+                    if !snapshot.pendingEntries.isEmpty {
+                        PendingCard(entries: snapshot.pendingEntries)
+                    }
+
                     if snapshot.summary.mode == .limits, !snapshot.summary.hasExpenseBudget {
-                        BudgetSetupCard()
+                        BudgetSetupCard { model.selectedTab = .plan }
                     }
 
                     if !snapshot.expenseCategories.isEmpty {
@@ -134,8 +138,11 @@ private struct HeroSummary: View {
         case .limits where !summary.hasExpenseBudget:
             return "No budgets set yet"
         case .limits:
+            let bills = summary.upcomingBills > 0
+                ? ", after \(Money(summary.upcomingBills, currency).formatted(cents: false)) in upcoming bills"
+                : ""
             if let daily = summary.dailyAllowance {
-                return "about \(Money(daily, currency).formatted(cents: false)) a day for the rest of the month"
+                return "about \(Money(daily, currency).formatted(cents: false)) a day for the rest of the month\(bills)"
             }
             return summary.headline < 0 ? "Time to slow down a little" : "left this month"
         case .everyDollar:
@@ -260,34 +267,6 @@ private struct GoalStrip: View {
     }
 }
 
-private struct GoalCard: View {
-    var goal: SavingsGoal
-    var currency: CurrencyCode
-
-    var body: some View {
-        HStack(spacing: 14) {
-            GoalJar(progress: goal.progress, color: goal.color)
-                .frame(width: 34, height: 52)
-            VStack(alignment: .leading, spacing: 4) {
-                Label(goal.displayName, systemImage: goal.symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .labelStyle(.titleOnly)
-                Text("\(Money(goal.saved, currency).formatted(cents: false)) of \(Money(goal.target, currency).formatted(cents: false))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let monthly = goal.monthlyNeeded() {
-                    Text("\(Money(monthly, currency).formatted(cents: false))/mo to stay on track")
-                        .font(.caption2)
-                        .foregroundStyle(goal.color)
-                }
-            }
-        }
-        .padding(14)
-        .frame(width: 250, alignment: .leading)
-        .glassEffect(.regular.tint(goal.color.opacity(0.08)), in: .rect(cornerRadius: 24))
-    }
-}
-
 /// A small capsule that fills with liquid as a goal progresses.
 struct GoalJar: View {
     var progress: Double
@@ -376,18 +355,75 @@ private struct HouseholdButton: View {
 
 /// Shown in Limits mode while no budgets exist yet.
 private struct BudgetSetupCard: View {
+    var action: () -> Void
+
     var body: some View {
         GlassCard {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "chart.pie.fill")
-                    .font(.title2)
-                    .foregroundStyle(TidePalette.accent(for: .calm))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Set up your budgets")
-                        .font(.headline)
-                    Text("Monthly budgets per category arrive in the Plan tab in v0.2. Until then, Tide shows what you've spent.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "chart.pie.fill")
+                        .font(.title2)
+                        .foregroundStyle(TidePalette.accent(for: .calm))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Set up your budgets")
+                            .font(.headline)
+                        Text("Give each category a monthly budget and Tide shows what's safe to spend.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Button("Set up budgets", action: action)
+                    .buttonStyle(.glassProminent)
+            }
+        }
+    }
+}
+
+/// Recurring items that came due and wait for a confirm or skip.
+private struct PendingCard: View {
+    var entries: [LedgerEntry]
+    @Environment(\.managedObjectContext) private var context
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "To confirm", detail: "\(entries.count)")
+            GlassCard(padding: 4, tint: TidePalette.accent(for: .watch)) {
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.objectID) { index, entry in
+                        HStack(spacing: 10) {
+                            NavigationLink {
+                                EntryDetailView(entry: entry)
+                            } label: {
+                                EntryRow(entry: entry, showsDate: true)
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                withAnimation(.snappy) { RecurringStore.skip(entry, context: context) }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.footnote.weight(.bold))
+                                    .frame(width: 34, height: 34)
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.circle)
+                            .accessibilityLabel("Skip")
+                            Button {
+                                withAnimation(.snappy) { RecurringStore.confirm(entry, context: context) }
+                            } label: {
+                                Image(systemName: "checkmark")
+                                    .font(.footnote.weight(.bold))
+                                    .frame(width: 34, height: 34)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .buttonBorderShape(.circle)
+                            .accessibilityLabel("Confirm")
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        if index < entries.count - 1 {
+                            Divider().padding(.leading, 68)
+                        }
+                    }
                 }
             }
         }

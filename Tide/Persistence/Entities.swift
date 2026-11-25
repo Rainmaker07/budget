@@ -29,6 +29,7 @@ final class Household: TideObject {
     @NSManaged var budgets: NSSet?
     @NSManaged var goals: NSSet?
     @NSManaged var places: NSSet?
+    @NSManaged var recurringRules: NSSet?
 
     var currency: CurrencyCode { CurrencyCode(baseCurrency ?? "EUR") }
 
@@ -202,6 +203,7 @@ final class LedgerEntry: TideObject {
     @NSManaged var toAccount: Account?
     @NSManaged var payer: Member?
     @NSManaged var place: Place?
+    @NSManaged var recurringRule: RecurringRule?
 
     var kind: EntryKind {
         get { EntryKind(rawValue: kindRaw ?? "") ?? .expense }
@@ -267,9 +269,15 @@ final class SavingsGoal: TideObject {
     @NSManaged var savedAmount: NSDecimalNumber?
     @NSManaged var targetDate: Date?
     @NSManaged var sortOrder: Int16
+    @NSManaged var targetMonths: Int16
     @NSManaged var household: Household?
     @NSManaged var category: BudgetCategory?
     @NSManaged var account: Account?
+
+    var kind: GoalKind {
+        get { GoalKind(rawValue: kindRaw ?? "") ?? .save }
+        set { kindRaw = newValue.rawValue }
+    }
 
     var displayName: String { name ?? "Goal" }
     var target: Decimal { targetAmount?.decimalValue ?? 0 }
@@ -307,6 +315,82 @@ final class Place: TideObject {
     var entryList: [LedgerEntry] {
         (entries as? Set<LedgerEntry> ?? []).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
+}
+
+enum GoalKind: String, CaseIterable, Identifiable {
+    case save, emergency, payOff
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .save: "Save up"
+        case .emergency: "Emergency fund"
+        case .payOff: "Pay off a debt"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .save: "star.fill"
+        case .emergency: "lifepreserver.fill"
+        case .payOff: "creditcard.fill"
+        }
+    }
+
+    /// Which categories this kind of goal tracks money moved into.
+    var categoryKinds: [CategoryKind] {
+        switch self {
+        case .save, .emergency: [.savings, .investment]
+        case .payOff: [.debt]
+        }
+    }
+}
+
+@objc(TDRecurringRule)
+final class RecurringRule: TideObject {
+    @NSManaged var name: String?
+    @NSManaged var kindRaw: String?
+    @NSManaged var amount: NSDecimalNumber?
+    @NSManaged var currencyCode: String?
+    @NSManaged var cadenceRaw: String?
+    @NSManaged var interval: Int16
+    @NSManaged var startDate: Date?
+    @NSManaged var nextDate: Date?
+    @NSManaged var endDate: Date?
+    @NSManaged var autoPost: Bool
+    @NSManaged var isPaused: Bool
+    @NSManaged var note: String?
+    @NSManaged var household: Household?
+    @NSManaged var category: BudgetCategory?
+    @NSManaged var account: Account?
+    @NSManaged var payer: Member?
+    @NSManaged var place: Place?
+    @NSManaged var entries: NSSet?
+
+    var displayName: String {
+        if let name, !name.isEmpty { return name }
+        return place?.displayName ?? category?.displayName ?? "Recurring"
+    }
+
+    var kind: EntryKind {
+        get { EntryKind(rawValue: kindRaw ?? "") ?? .expense }
+        set { kindRaw = newValue.rawValue }
+    }
+
+    var cadence: Cadence {
+        get { Cadence(rawValue: cadenceRaw ?? "") ?? .monthly }
+        set { cadenceRaw = newValue.rawValue }
+    }
+
+    var value: Decimal { amount?.decimalValue ?? 0 }
+
+    var recurrence: Recurrence? {
+        guard let startDate else { return nil }
+        return Recurrence(cadence: cadence, interval: max(1, Int(interval)), start: startDate, end: endDate)
+    }
+
+    var scheduleTitle: String { cadence.title(every: max(1, Int(interval))) }
 }
 
 extension Decimal {

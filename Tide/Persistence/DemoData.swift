@@ -159,6 +159,38 @@ enum DemoData {
         PlaceStore.find(named: "Rewe", in: household, context: context)?.colorName = "red"
         PlaceStore.find(named: "Edeka", in: household, context: context)?.colorName = "yellow"
 
+        // Recurring items: monthly ones already posted this month start next
+        // month; a weekly one waits for confirmation on Home.
+        func recurring(_ name: String, _ kind: EntryKind, _ amount: Decimal, category: String, place: String?,
+                       cadence: Cadence = .monthly, day: Int = 1, autoPost: Bool = true, payer: Member,
+                       start: Date? = nil) {
+            let rule = RecurringRule(context: context)
+            rule.name = name
+            rule.kind = kind
+            rule.amount = amount.number
+            rule.currencyCode = "EUR"
+            rule.cadence = cadence
+            rule.interval = 1
+            rule.startDate = start ?? calendar.date(from: DateComponents(year: month.year, month: month.month, day: day, hour: 9))
+            rule.autoPost = autoPost
+            rule.category = categories[category]
+            rule.place = place.flatMap { PlaceStore.findOrCreate(named: $0, in: household, context: context) }
+            rule.payer = payer
+            rule.account = joint
+            rule.household = household
+            if start == nil, let recurrence = rule.recurrence {
+                rule.nextDate = recurrence.next(after: month.next.firstDay(calendar: calendar).addingTimeInterval(-1))
+            }
+        }
+        recurring("Rent", .expense, 1250, category: "Rent", place: "Rent – Lindenstraße", payer: alex)
+        recurring("Alex's salary", .income, 3420, category: "Salary", place: "Studio Nord GmbH", payer: alex)
+        recurring("Sam's salary", .income, 2980, category: "Salary", place: "City Hospital", payer: sam)
+        recurring("ETF savings plan", .transfer, 400, category: "ETF portfolio", place: "Monthly ETF plan", payer: sam)
+        recurring("Music streaming", .expense, Decimal(string: "16.99")!, category: "Subscriptions", place: "Music streaming", day: 2, payer: sam)
+        recurring("Electricity", .expense, 138, category: "Utilities", place: "Stadtwerke", day: 5, autoPost: false, payer: alex)
+        recurring("Cleaning help", .expense, 45, category: "Household", place: "Cleaning help", cadence: .weekly,
+                  autoPost: false, payer: sam, start: calendar.date(byAdding: .day, value: -3, to: now))
+
         // Goals.
         let japan = SavingsGoal(context: context)
         japan.name = "Japan trip"

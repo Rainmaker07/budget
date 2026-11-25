@@ -14,6 +14,8 @@ final class AppModel {
     var month: MonthKey {
         didSet { refresh() }
     }
+    /// The selected tab, so screens can send you elsewhere (e.g. Home → Plan).
+    var selectedTab: AppTab = LaunchOptions.initialTab
 
     @ObservationIgnored private var observer: NSObjectProtocol?
 
@@ -21,6 +23,7 @@ final class AppModel {
         self.context = context
         let household = HouseholdBootstrap.ensureHousehold(in: context)
         PlaceStore.backfill(household, context: context)
+        RecurringStore.postDue(in: household, context: context)
         let month = MonthKey(date: .now)
         self.household = household
         self.month = month
@@ -41,6 +44,16 @@ final class AppModel {
             household.budgetMode = newValue
             try? context.save()
         }
+    }
+
+    /// When the app comes to the foreground: post recurring items that came
+    /// due, move to the new month if one started, refresh exchange rates.
+    func becameActive() {
+        RecurringStore.postDue(in: household, context: context)
+        let current = MonthKey(date: .now)
+        if month < current, month == current.previous { month = current }
+        refresh()
+        Task { await ExchangeRateService.shared.refreshIfNeeded() }
     }
 
     func refresh() {

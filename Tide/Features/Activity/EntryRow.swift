@@ -58,7 +58,7 @@ struct EntryRow: View {
         } else if entry.placeName == nil, let parent = entry.category?.parent {
             parts.append(parent.displayName)
         }
-        if entry.isPending { parts.append("Pending") }
+        if entry.isPending { parts.append("To confirm") }
         return parts.joined(separator: " · ")
     }
 

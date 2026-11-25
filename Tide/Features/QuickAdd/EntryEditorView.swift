@@ -262,15 +262,27 @@ struct EntryEditorView: View {
                 Text(rateHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let suggestion = ExchangeRateService.shared.suggestion(for: Money(input.value, currency), in: baseCurrency, on: date),
+                   chargedAmount != suggestion.amount.amount {
+                    Button {
+                        chargedText = NSDecimalNumber(decimal: suggestion.amount.amount).stringValue
+                    } label: {
+                        Label("Use ECB rate: \(suggestion.amount.formatted()) (\(suggestion.rate.date.formatted(.dateTime.day().month(.abbreviated))))",
+                              systemImage: "wand.and.sparkles")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.glass)
+                }
             }
         }
+        .task { await ExchangeRateService.shared.refreshIfNeeded() }
     }
 
     private var rateHint: String {
         guard input.value > 0, let charged = chargedAmount,
               let rate = ExchangeRate.implied(original: Money(input.value, currency), converted: Money(charged, baseCurrency))
         else {
-            return "Enter the \(baseCurrency.rawValue) amount from your statement. Budgets and reports use it."
+            return "Enter the \(baseCurrency.rawValue) amount from your statement (or use the ECB rate). Budgets and reports use it."
         }
         return "1 \(currency.rawValue) = \(rate.rate.rounded(scale: 4).formatted()) \(baseCurrency.rawValue)"
     }
